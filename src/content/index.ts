@@ -37,7 +37,7 @@ async function runMetabolism() {
   if (isProcessing) return;
   
   // 1. Scrape
-  const history = scrapeChatHistory(5);
+  const history = await scrapeChatHistory(5);
   if (history.length === 0) return;
 
   // 2. Get latest USER message

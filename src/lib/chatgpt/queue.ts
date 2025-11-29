@@ -1,5 +1,28 @@
-import EventEmitter from 'mitt'
 import { sleep } from './utils'
+
+type EventHandler<T = any> = (payload: T) => void;
+
+class TinyEmitter {
+  private events = new Map<string, EventHandler[]>();
+
+  on<TPayload>(event: string, handler: EventHandler<TPayload>): () => void {
+    const handlers = this.events.get(event) || [];
+    handlers.push(handler as EventHandler);
+    this.events.set(event, handlers);
+    return () => this.off(event, handler as EventHandler);
+  }
+
+  off(event: string, handler: EventHandler) {
+    const handlers = this.events.get(event);
+    if (!handlers) return;
+    this.events.set(event, handlers.filter((fn) => fn !== handler));
+  }
+
+  emit<TPayload>(event: string, payload: TPayload) {
+    const handlers = this.events.get(event);
+    handlers?.forEach((handler) => handler(payload as any));
+  }
+}
 
 type RequestFn<T> = () => Promise<T>
 interface RequestObject<T> {
@@ -14,10 +37,7 @@ interface ProgressEvent {
 }
 
 export class RequestQueue<T> {
-    private eventEmitter = EventEmitter<{
-        done: T[]
-        progress: ProgressEvent
-    } & Record<string, any[]>>()
+    private eventEmitter = new TinyEmitter()
 
     private queue: Array<RequestObject<T>> = []
     private results: T[] = []

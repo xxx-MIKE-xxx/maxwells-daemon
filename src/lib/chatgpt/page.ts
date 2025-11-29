@@ -1,6 +1,6 @@
 import { KEY_OAI_HISTORY_DISABLED } from './constants'
-import { getBase64FromImageUrl, getBase64FromImg } from './utils/dom'
-import { getPageContextFromMainWorld } from './bridge' // Import the bridge
+import { getBase64FromImageUrl, getBase64FromImg } from './dom'
+import { getPageContextFromMainWorld } from './bridge'
 
 // Removed global Window declaration overlap issues
 // Removed unsafeWindow import

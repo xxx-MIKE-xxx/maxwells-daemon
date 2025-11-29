@@ -1,10 +1,10 @@
-import { fetchConversation, getCurrentChatId, processConversation } from '../api'
-import i18n from '../i18n'
-import { checkIfConversationStarted } from '../page'
-import { copyToClipboard } from '../utils/clipboard'
-import { flatMap, fromMarkdown, toMarkdown } from '../utils/markdown'
-import { standardizeLineBreaks } from '../utils/text'
-import type { ConversationNodeMessage } from '../api'
+import { fetchConversation, getCurrentChatId, processConversation } from './api'
+import i18n from './i18n'
+import { checkIfConversationStarted } from './page'
+import { copyToClipboard } from './clipboard'
+import { flatMap, fromMarkdown, toMarkdown } from './markdown'
+import { standardizeLineBreaks } from './utils'
+import type { ConversationNodeMessage } from './api'
 import type { Emphasis, Strong } from 'mdast'
 
 export async function exportToText() {
@@ -46,7 +46,7 @@ function transformMessage(message?: ConversationNodeMessage) {
             // Code execution result with image
             && !(
                 message.content.content_type === 'execution_output'
-                && message.metadata?.aggregate_result?.messages?.some(msg => msg.message_type === 'image')
+                && message.metadata?.aggregate_result?.messages?.some((msg: any) => msg.message_type === 'image')
             )
         ) {
             return null
@@ -76,7 +76,7 @@ function transformMessage(message?: ConversationNodeMessage) {
 
     if (matches) {
         // Replace `╬${index}╬` back to the original latex
-        content = content.replace(/╬(\d+)╬/g, (_, index) => {
+        content = content.replace(/╬(\d+)╬/g, (_: string, index: string) => {
             return matches[+index]
         })
     }
@@ -99,7 +99,7 @@ function transformContent(
         case 'execution_output':
             if (metadata?.aggregate_result?.messages) {
                 return metadata.aggregate_result.messages
-                    .filter(msg => msg.message_type === 'image')
+                    .filter((msg: any) => msg.message_type === 'image')
                     .map(() => '[image]')
                     .join('\n')
             }
@@ -116,7 +116,7 @@ function transformContent(
             return ''
         }
         case 'multimodal_text': {
-            return content.parts?.map((part) => {
+            return content.parts?.map((part: any) => {
                 if (typeof part === 'string') return part
                 // We show `[image]` for multimodal as the base64 string is too long. This is bad for sharing pure text.
                 if (part.content_type === 'image_asset_pointer') return '[image]'
@@ -175,7 +175,7 @@ function transformFootNotes(
     // 【11†(PrintWiki)】
     const footNoteMarkRegex = /【(\d+)†\((.+?)\)】/g
     return input.replace(footNoteMarkRegex, (match, citeIndex, _evidenceText) => {
-        const citation = metadata?.citations?.find(cite => cite.metadata?.extra?.cited_message_idx === +citeIndex)
+        const citation = metadata?.citations?.find((cite: any) => cite.metadata?.extra?.cited_message_idx === +citeIndex)
         // We simply remove the foot note mark in text output
         if (citation) return ''
 

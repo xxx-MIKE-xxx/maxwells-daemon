@@ -1,8 +1,8 @@
 import urlcat from 'urlcat'
 import { apiUrl, baseUrl } from './constants'
 import { getChatIdFromUrl, getConversationFromSharePage, getPageAccessToken, isSharePage } from './page'
-import { blobToDataURL } from './utils/dom'
-import { memorize } from './utils/memorize'
+import { blobToDataURL } from './dom'
+import { memorize } from './memorize'
 
 interface ApiSession {
     accessToken: string
@@ -441,7 +441,11 @@ async function replaceImageAssets(conversation: ApiConversation): Promise<void> 
 export async function fetchConversation(chatId: string, shouldReplaceAssets: boolean): Promise<ApiConversationWithId> {
     if (chatId.startsWith('__share__')) {
         const id = chatId.replace('__share__', '')
-        const shareConversation = getConversationFromSharePage() as ApiConversation
+        const shareConversation = await getConversationFromSharePage() as ApiConversation | null
+        if (!shareConversation) {
+            throw new Error('No share conversation available')
+        }
+
         await replaceImageAssets(shareConversation)
 
         return {

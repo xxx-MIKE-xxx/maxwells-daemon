@@ -1,5 +1,12 @@
 // src/content/scraper.ts
 
+import {
+  fetchConversation,
+  getCurrentChatId,
+  processConversation,
+  type ConversationNode,
+} from '@/lib/chatgpt/api'
+
 export interface ScrapedMessage {
   role: 'USER' | 'AI';
   text: string;
@@ -36,33 +43,37 @@ function detectPlatform(): 'chatgpt' | 'claude' | 'gemini' | 'unknown' {
   return 'unknown';
 }
 
-export function scrapeChatHistory(limit: number = 10): ScrapedMessage[] {
-  const platform = detectPlatform();
-  
-  if (platform === 'unknown') {
-    // Only log this once to avoid spamming
-    if (Math.random() > 0.95) console.warn("[Maxwell] Unknown platform");
+async function scrapeChatGptFromApi(limit: number): Promise<ScrapedMessage[]> {
+  try {
+    const chatId = await getCurrentChatId();
+    const conversation = await fetchConversation(chatId, false);
+    const { conversationNodes } = processConversation(conversation);
+
+    return conversationNodes.slice(-limit).map((node): ScrapedMessage => ({
+      role: node.message?.author.role === 'user' ? 'USER' : 'AI',
+      text: extractTextFromNode(node),
+    })).filter((msg) => msg.text.length > 0);
+  } catch (error) {
+    console.warn('[Maxwell] ChatGPT API scrape failed, falling back to DOM', error);
     return [];
   }
+}
 
+function scrapeFromDom(platform: 'chatgpt' | 'claude' | 'gemini', limit: number): ScrapedMessage[] {
   const config = SELECTORS[platform];
-  
-  // 1. Find all "Conversation Turns"
+
   let rows = Array.from(document.querySelectorAll(config.row));
-  
-  // DEBUG: If we find 0 rows, something is critical
+
   if (rows.length === 0) {
-    // Fallback: Try a generic selector just in case OpenAI changed the ID prefix
     const genericRows = document.querySelectorAll('article');
     if (genericRows.length > 0) {
-        console.log(`[Maxwell] Standard selectors failed, found ${genericRows.length} generic articles.`);
-        rows = Array.from(genericRows);
+      console.log(`[Maxwell] Standard selectors failed, found ${genericRows.length} generic articles.`);
+      rows = Array.from(genericRows);
     } else {
-        return [];
+      return [];
     }
   }
 
-  // 2. Map them to messages
   const history = rows.slice(-limit).map(row => {
     let role: 'USER' | 'AI' = 'AI';
     let text = "";
@@ -71,9 +82,8 @@ export function scrapeChatHistory(limit: number = 10): ScrapedMessage[] {
       role = row.classList.contains('user-query-text') ? 'USER' : 'AI';
       text = row.textContent || "";
     } else {
-      // ChatGPT Strategy: Look for the specific role attribute
       const isUser = row.querySelector(config.user);
-      const isAi = row.querySelector(config.ai) || row.querySelector(config.aiFallback);
+      const isAi = row.querySelector(config.ai) || ('aiFallback' in config ? row.querySelector((config as any).aiFallback) : null);
 
       if (isUser) {
         role = 'USER';
@@ -82,7 +92,6 @@ export function scrapeChatHistory(limit: number = 10): ScrapedMessage[] {
         role = 'AI';
         text = isAi.textContent || "";
       } else {
-        // Last resort: Grab all text in the row
         text = row.textContent || "";
       }
     }
@@ -93,10 +102,51 @@ export function scrapeChatHistory(limit: number = 10): ScrapedMessage[] {
     };
   }).filter(msg => msg.text.length > 0);
 
-  // DEBUG: Prove it works
-  if (history.length > 0 && Math.random() > 0.9) {
-    console.log(`[Maxwell] Scraper sees ${history.length} messages. Last: "${history[history.length-1].text.slice(0, 20)}..."`);
+  return history;
+}
+
+function extractTextFromNode(node: ConversationNode): string {
+  const message = node.message;
+  if (!message) return '';
+
+  const content = message.content;
+  if (!content) return '';
+
+  switch (content.content_type) {
+    case 'text':
+      return (content.parts || []).join('\n').trim();
+    case 'code':
+    case 'execution_output':
+      return (content as any).text?.trim() || '';
+    case 'multimodal_text':
+      return (content.parts || [])
+        .map((part) => typeof part === 'string' ? part : '')
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+    default:
+      return '';
+  }
+}
+
+export async function scrapeChatHistory(limit: number = 10): Promise<ScrapedMessage[]> {
+  const platform = detectPlatform();
+
+  if (platform === 'unknown') {
+    if (Math.random() > 0.95) console.warn("[Maxwell] Unknown platform");
+    return [];
   }
 
-  return history;
+  if (platform === 'chatgpt') {
+    const apiHistory = await scrapeChatGptFromApi(limit);
+    if (apiHistory.length > 0) return apiHistory;
+  }
+
+  const fallbackHistory = scrapeFromDom(platform, limit);
+
+  if (fallbackHistory.length > 0 && Math.random() > 0.9) {
+    console.log(`[Maxwell] Scraper sees ${fallbackHistory.length} messages. Last: "${fallbackHistory[fallbackHistory.length-1].text.slice(0, 20)}..."`);
+  }
+
+  return fallbackHistory;
 }

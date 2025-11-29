@@ -1,5 +1,5 @@
 import { jsonlStringify, nonNullable } from './utils'
-import type { ConversationNode, ConversationResult } from '../api'
+import type { ConversationNode, ConversationResult } from './api'
 
 interface NameMessage {
     user_name: string
