@@ -1,0 +1,39 @@
+import {
+  codes,
+  constants,
+  markdownLineEndingOrSpace,
+  unicodePunctuation,
+  unicodeWhitespace
+} from "/vendor/.vite-deps-chunk-K5F3J5YU.js__v--cb44d052.js";
+
+// node_modules/decode-named-character-reference/index.dom.js
+var element = document.createElement("i");
+function decodeNamedCharacterReference(value) {
+  const characterReference = "&" + value + ";";
+  element.innerHTML = characterReference;
+  const character = element.textContent;
+  if (
+    // @ts-expect-error: TypeScript is wrong that `textContent` on elements can
+    // yield `null`.
+    character.charCodeAt(character.length - 1) === 59 && value !== "semi"
+  ) {
+    return false;
+  }
+  return character === characterReference ? false : character;
+}
+
+// node_modules/micromark-util-classify-character/dev/index.js
+function classifyCharacter(code) {
+  if (code === codes.eof || markdownLineEndingOrSpace(code) || unicodeWhitespace(code)) {
+    return constants.characterGroupWhitespace;
+  }
+  if (unicodePunctuation(code)) {
+    return constants.characterGroupPunctuation;
+  }
+}
+
+export {
+  decodeNamedCharacterReference,
+  classifyCharacter
+};
+//# sourceMappingURL=chunk-BVRDC65T.js.map

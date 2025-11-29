@@ -1,7 +1,8 @@
 import { checkPulse, infer } from "/src/lib/ollamaClient.ts.js";
 import { scrapeChatHistory } from "/src/content/scraper.ts.js";
 import { updateSessionState, initSessionIfMissing } from "/src/lib/storage.ts.js";
-import { v4 as uuidv4 } from "/vendor/.vite-deps-uuid.js__v--9bbfba18.js";
+import { v4 as uuidv4 } from "/vendor/.vite-deps-uuid.js__v--33469017.js";
+import { fetchChatContent } from "/src/lib/chatgpt/text.ts.js";
 console.log("[Maxwell] Content Script Initialized");
 initSessionIfMissing("Build a browser extension");
 let lastProcessedText = "";
@@ -18,6 +19,18 @@ function extractCodeBlocks(text) {
   }
   return blocks;
 }
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "METABOLISM_FULL_SYNC") {
+    console.log("Maxwell: Triggering full API sync...");
+    fetchChatContent().then((fullText) => {
+      sendResponse({ status: "success", data: fullText });
+    }).catch((err) => {
+      console.error("Maxwell: Export failed", err);
+      sendResponse({ status: "error", message: err.message });
+    });
+    return true;
+  }
+});
 async function runMetabolism() {
   if (isProcessing) return;
   const history = scrapeChatHistory(5);
@@ -36,7 +49,7 @@ async function runMetabolism() {
   }
   try {
     const prompt = `
-      Analyze this user message. Return ONLY a JSON object.
+      Analyze this user message. Return a strictly valid JSON ARRAY of objects.
       Do not explain. 
       
       Categories:
@@ -46,22 +59,34 @@ async function runMetabolism() {
       3: TASK (Immediate next step, error fixing)
       4: NOISE (Chatter, "thanks", "ok", "looks good")
 
-      Format: { "tier": number, "content": string, "confidence": number }
+      Format: [ { "tier": number, "content": string, "confidence": number } ]
 
       Message: "${lastUserMessage.text}"
     `;
     const rawResponse = await infer({
       model: "llama3",
-      // Ensure this matches your 'ollama list'
       prompt,
       stream: false,
       options: { temperature: 0.1 }
     });
     console.log("[Maxwell] Raw Output:", rawResponse);
-    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      await processClassification(result, lastUserMessage.text);
+    let jsonString = rawResponse;
+    const arrayMatch = rawResponse.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      jsonString = arrayMatch[0];
+    } else {
+      if (rawResponse.trim().startsWith("{") && !rawResponse.trim().startsWith("[")) {
+        jsonString = `[${rawResponse}]`;
+      }
+    }
+    try {
+      const result = JSON.parse(jsonString);
+      const items = Array.isArray(result) ? result : [result];
+      for (const item of items) {
+        await processClassification(item, lastUserMessage.text);
+      }
+    } catch (parseErr) {
+      console.warn("[Maxwell] JSON Parse Error (First Attempt). cleaning...", parseErr);
     }
   } catch (e) {
     console.error("[Maxwell] 🔴 Metabolism Failed", e);
@@ -69,8 +94,20 @@ async function runMetabolism() {
   isProcessing = false;
 }
 async function processClassification(data, originalText) {
-  console.log(`[Maxwell] Classified as Tier ${data.tier}`);
+  console.log(`[Maxwell] Classified as Tier ${data.tier}: ${data.content.slice(0, 20)}...`);
   await updateSessionState((state) => {
+    if (data.tier === 0) {
+      const currentContent = state.north_star?.content || "";
+      const defaultGoal = "Build a browser extension";
+      if (!currentContent || currentContent === defaultGoal) {
+        state.north_star = {
+          id: state.north_star?.id || uuidv4(),
+          // Keep existing ID or make new one
+          content: data.content,
+          locked: true
+        };
+      }
+    }
     if (data.tier === 1) {
       const exists = state.constraints.some((c) => c.content.includes(data.content.slice(0, 15)));
       if (!exists) {
@@ -84,7 +121,7 @@ async function processClassification(data, originalText) {
     if (data.tier === 2) {
       const blocks = extractCodeBlocks(originalText);
       blocks.forEach((block) => {
-        const ext = block.language === "javascript" ? "js" : block.language === "typescript" ? "ts" : block.language || "txt";
+        const ext = block.language === "javascript" ? "js" : block.language === "typescript" ? "ts" : block.language === "bash" ? "sh" : block.language || "txt";
         const filename = `src/extracted_${Date.now().toString().slice(-6)}.${ext}`;
         state.vfs[filename] = {
           path: filename,
@@ -92,7 +129,6 @@ async function processClassification(data, originalText) {
           language: block.language,
           last_modified: Date.now(),
           hash: uuidv4().slice(0, 8),
-          // Placeholder for real SHA-256
           pending_patches: []
         };
       });

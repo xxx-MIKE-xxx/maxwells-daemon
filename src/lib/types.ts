@@ -3,33 +3,45 @@ import { z } from 'zod';
 // --- Tier 0: The North Star (Immutable) ---
 export const NorthStarSchema = z.object({
   id: z.string().uuid(),
-  content: z.string(), // e.g., "Build a Chrome Extension..."
+  content: z.string(),
   locked: z.boolean().default(true),
 });
 
 // --- Tier 1: Constraints (Hard Rules) ---
 export const ConstraintSchema = z.object({
   id: z.string(),
-  content: z.string(), // e.g., "No jQuery", "Manifest V3 only"
+  content: z.string(),
   active: z.boolean().default(true),
 });
 
-// --- Tier 2: The Virtual File System (VFS) ---
+// --- Tier 2.A: The Virtual File System (VFS - Ghost Mode) ---
 export const FileNodeSchema = z.object({
-  path: z.string(),       // e.g., "src/content/index.ts"
-  content: z.string(),    // The actual code
-  language: z.string(),   // "typescript", "javascript", "css"
+  path: z.string(),
+  content: z.string(),
+  language: z.string(),
   last_modified: z.number(),
-  hash: z.string(),       // SHA-256 for deduplication
-  pending_patches: z.array(z.object({
-    id: z.string(),
-    content: z.string(),
-    timestamp: z.number(),
-    confidence: z.number().min(0).max(1), // 0.0 to 1.0 (Sentiment)
-  })).default([]),
+  hash: z.string(),
+  pending_patches: z.array(z.any()).default([]),
 });
 
 export const VFSSchema = z.record(z.string(), FileNodeSchema);
+
+// --- Tier 2.B: The Tether (Shell Mode) ---
+export const TetherFileSchema = z.object({
+  path: z.string(), // Relative path: "src/components/Button.tsx"
+  kind: z.enum(['file', 'directory']),
+  size: z.number(),
+  last_modified: z.number(),
+  summary: z.string().optional(),
+  in_working_set: z.boolean().default(false),
+});
+
+export const TetherStateSchema = z.object({
+  active: z.boolean().default(false),
+  root_name: z.string().optional(),
+  tree: z.array(TetherFileSchema).default([]), 
+  working_set: z.record(z.string(), z.string()), // Path -> Full Content
+});
 
 // --- Tier 3: Execution Pointer (Volatile) ---
 export const PointerSchema = z.object({
@@ -49,10 +61,15 @@ export const SessionStateSchema = z.object({
   north_star: NorthStarSchema,
   constraints: z.array(ConstraintSchema),
   vfs: VFSSchema,
-  pointer: PointerSchema,
+  // Default to empty if migrating from old state
+  tether: TetherStateSchema.default({
+    active: false,
+    tree: [],
+    working_set: {}
+  }),                 
+  pointer: PointerSchema
 });
 
-// Extract TypeScript types from the Zod Schema
 export type SessionState = z.infer<typeof SessionStateSchema>;
 export type FileNode = z.infer<typeof FileNodeSchema>;
-export type Constraint = z.infer<typeof ConstraintSchema>;
+export type TetherFile = z.infer<typeof TetherFileSchema>;

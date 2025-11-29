@@ -1,35 +1,39 @@
-import { z } from "/vendor/.vite-deps-zod.js__v--9bbfba18.js";
+import { z } from "/vendor/.vite-deps-zod.js__v--75e5e267.js";
 export const NorthStarSchema = z.object({
   id: z.string().uuid(),
   content: z.string(),
-  // e.g., "Build a Chrome Extension..."
   locked: z.boolean().default(true)
 });
 export const ConstraintSchema = z.object({
   id: z.string(),
   content: z.string(),
-  // e.g., "No jQuery", "Manifest V3 only"
   active: z.boolean().default(true)
 });
 export const FileNodeSchema = z.object({
   path: z.string(),
-  // e.g., "src/content/index.ts"
   content: z.string(),
-  // The actual code
   language: z.string(),
-  // "typescript", "javascript", "css"
   last_modified: z.number(),
   hash: z.string(),
-  // SHA-256 for deduplication
-  pending_patches: z.array(z.object({
-    id: z.string(),
-    content: z.string(),
-    timestamp: z.number(),
-    confidence: z.number().min(0).max(1)
-    // 0.0 to 1.0 (Sentiment)
-  })).default([])
+  pending_patches: z.array(z.any()).default([])
 });
 export const VFSSchema = z.record(z.string(), FileNodeSchema);
+export const TetherFileSchema = z.object({
+  path: z.string(),
+  // Relative path: "src/components/Button.tsx"
+  kind: z.enum(["file", "directory"]),
+  size: z.number(),
+  last_modified: z.number(),
+  summary: z.string().optional(),
+  in_working_set: z.boolean().default(false)
+});
+export const TetherStateSchema = z.object({
+  active: z.boolean().default(false),
+  root_name: z.string().optional(),
+  tree: z.array(TetherFileSchema).default([]),
+  working_set: z.record(z.string(), z.string())
+  // Path -> Full Content
+});
 export const PointerSchema = z.object({
   current_step: z.string(),
   blockers: z.array(z.string()),
@@ -45,5 +49,11 @@ export const SessionStateSchema = z.object({
   north_star: NorthStarSchema,
   constraints: z.array(ConstraintSchema),
   vfs: VFSSchema,
+  // Default to empty if migrating from old state
+  tether: TetherStateSchema.default({
+    active: false,
+    tree: [],
+    working_set: {}
+  }),
   pointer: PointerSchema
 });

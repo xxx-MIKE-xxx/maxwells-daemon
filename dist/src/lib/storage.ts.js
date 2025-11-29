@@ -1,5 +1,5 @@
 import { SessionStateSchema } from "/src/lib/types.ts.js";
-import { v4 as uuidv4 } from "/vendor/.vite-deps-uuid.js__v--9bbfba18.js";
+import { v4 as uuidv4 } from "/vendor/.vite-deps-uuid.js__v--e83dfe43.js";
 const STORAGE_KEY = "maxwell_session";
 export async function getSessionState() {
   const result = await chrome.storage.local.get([STORAGE_KEY]);
