@@ -285,9 +285,30 @@ export const useMaxwellStore = create<MaxwellStore>((set, get) => ({
       if (result.maxwell_session) {
         // Validation Layer: Protect against corrupted JSON
         const parsed = SessionStateSchema.safeParse(result.maxwell_session);
-        
+
         if (parsed.success) {
-          set({ state: parsed.data, isLoading: false });
+          const currentState = get().state;
+
+          // Merge in-memory tether state with stored state to avoid connection races
+          const mergedState = (() => {
+            if (currentState?.tether?.active && !parsed.data.tether.active) {
+              return {
+                ...parsed.data,
+                tether: {
+                  ...parsed.data.tether,
+                  active: true,
+                  root_name: parsed.data.tether.root_name || currentState.tether.root_name,
+                  working_set: Object.keys(parsed.data.tether.working_set).length
+                    ? parsed.data.tether.working_set
+                    : currentState.tether.working_set,
+                  tree: parsed.data.tether.tree.length ? parsed.data.tether.tree : currentState.tether.tree
+                }
+              };
+            }
+            return parsed.data;
+          })();
+
+          set({ state: mergedState, isLoading: false });
           // Note: We do NOT auto-init Tether here to avoid infinite loops.
           // Tether initialization is handled by the component mount or explicit actions.
         } else {
