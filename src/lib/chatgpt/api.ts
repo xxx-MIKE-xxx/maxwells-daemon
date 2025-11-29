@@ -540,7 +540,7 @@ export async function deleteConversation(chatId: string): Promise<boolean> {
 }
 
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
-    const accessToken = await getAccessToken()
+    const accessToken = await getAccessToken() // This MUST be awaited
     const accountId = await getTeamAccountId()
 
     const response = await fetch(url, {
@@ -569,7 +569,7 @@ async function _fetchSession(): Promise<ApiSession> {
 const fetchSession = memorize(_fetchSession)
 
 async function getAccessToken(): Promise<string> {
-    const pageAccessToken = getPageAccessToken()
+    const pageAccessToken = await getPageAccessToken() // Await this!
     if (pageAccessToken) return pageAccessToken
 
     const session = await fetchSession()
