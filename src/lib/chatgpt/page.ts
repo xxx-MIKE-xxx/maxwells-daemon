@@ -1,28 +1,25 @@
 import { KEY_OAI_HISTORY_DISABLED } from './constants'
-import { getBase64FromImageUrl, getBase64FromImg } from './utils/dom'
-import { getPageContextFromMainWorld } from './bridge' // Import the bridge
-
-// Removed global Window declaration overlap issues
-// Removed unsafeWindow import
+import { getBase64FromImageUrl, getBase64FromImg } from './utils/dom' // This path IS correct
+import { getPageContextFromMainWorld } from './bridge'
 
 export function getHistoryDisabled(): boolean {
     return localStorage.getItem(KEY_OAI_HISTORY_DISABLED) === '"true"'
 }
 
-// Rewritten to be async because we must communicate across worlds
+// CHANGED: Now Async. Uses Bridge to get token from Main World.
 export async function getPageAccessToken(): Promise<string | null> {
     const context: any = await getPageContextFromMainWorld();
-    return context?.state?.loaderData?.root?.clientBootstrap?.session?.accessToken 
+    return context?.state?.loaderData?.root?.clientBootstrap?.session?.accessToken
         || context?.props?.pageProps?.user?.session?.accessToken
         || null;
 }
 
-// Rewritten to use the bridge
+// CHANGED: Now Async.
 async function getUserProfile() {
     const context: any = await getPageContextFromMainWorld();
-    const user = context?.props?.pageProps?.user 
+    const user = context?.props?.pageProps?.user
         || context?.state?.loaderData?.root?.clientBootstrap?.session?.user;
-    
+
     if (!user) throw new Error('No user found.')
     return user
 }
@@ -38,10 +35,10 @@ export function isSharePage() {
         && !location.pathname.endsWith('/continue')
 }
 
-// Adapted to async
+// CHANGED: Now Async.
 export async function getConversationFromSharePage() {
     const context: any = await getPageContextFromMainWorld();
-    
+
     if (context?.props?.pageProps?.serverResponse?.data) {
         return JSON.parse(JSON.stringify(context.props.pageProps.serverResponse.data))
     }
@@ -55,7 +52,7 @@ const defaultAvatar = 'data:image/svg+xml,%3Csvg%20stroke%3D%22currentColor%22%2
 
 export async function getUserAvatar(): Promise<string> {
     try {
-        const { picture } = await getUserProfile() // Await here
+        const { picture } = await getUserProfile() // CHANGED: Await here
         if (picture) return await getBase64FromImageUrl(picture)
     }
     catch (e) {

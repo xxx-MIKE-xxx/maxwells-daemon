@@ -1,5 +1,6 @@
-import { jsonlStringify, nonNullable } from './utils'
-import type { ConversationNode, ConversationResult } from '../api'
+// Imports updated to point to 'misc.ts' and correct API path
+import { jsonlStringify, nonNullable } from './utils/misc'
+import type { ConversationNode, ConversationResult } from './api' // Changed from '../api' to './api'
 
 interface NameMessage {
     user_name: string
@@ -33,7 +34,6 @@ function convertMessageToTavern(node: ConversationNode): TavernMessage | null {
     return {
         name: authorRole === 'assistant' ? 'Assistant' : 'You',
         is_user: authorRole === 'user',
-        // This is the opposite of is_user! Not always true.
         is_name: authorRole === 'assistant',
         send_date: createTime,
         mes: text,

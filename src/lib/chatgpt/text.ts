@@ -1,32 +1,35 @@
-import { fetchConversation, getCurrentChatId, processConversation } from '../api'
-import i18n from '../i18n'
-import { checkIfConversationStarted } from '../page'
-import { copyToClipboard } from '../utils/clipboard'
-import { flatMap, fromMarkdown, toMarkdown } from '../utils/markdown'
-import { standardizeLineBreaks } from '../utils/text'
-import type { ConversationNodeMessage } from '../api'
-import type { Emphasis, Strong } from 'mdast'
+// src/lib/chatgpt/text.ts
+import { fetchConversation, getCurrentChatId, processConversation } from './api'
+import { checkIfConversationStarted } from './page'
+// Ensure this path is correct relative to this file
+import { copyToClipboard } from './utils/clipboard' 
+import { flatMap, fromMarkdown, toMarkdown } from './utils/markdown'
+// This now imports from the NEW file we created in Step 3
+import { standardizeLineBreaks } from './utils/text' 
 
-export async function exportToText() {
+import type { ConversationNodeMessage, Citation } from './api'
+import type { Emphasis, Strong, Text } from 'mdast'
+import type { Node } from 'unist'
+
+export async function fetchChatContent(): Promise<string | null> {
     if (!checkIfConversationStarted()) {
-        alert(i18n.t('Please start a conversation first'))
-        return false
+        console.warn('Maxwell: No conversation started')
+        return null
     }
 
     const chatId = await getCurrentChatId()
-    // All image in text output will be replaced with `[image]`
-    // So we don't need to waste time to download them
+    
+    // Fetch full conversation via API
     const rawConversation = await fetchConversation(chatId, false)
 
     const { conversationNodes } = processConversation(rawConversation)
+    
     const text = conversationNodes
         .map(({ message }) => transformMessage(message))
         .filter(Boolean)
         .join('\n\n')
 
-    copyToClipboard(standardizeLineBreaks(text))
-
-    return true
+    return standardizeLineBreaks(text)
 }
 
 const LatexRegex = /(\s\$\$.+\$\$\s|\s\$.+\$\s|\\\[.+\\\]|\\\(.+\\\))|(^\$$[\S\s]+^\$$)|(^\$\$[\S\s]+^\$\$$)/gm
@@ -34,19 +37,14 @@ const LatexRegex = /(\s\$\$.+\$\$\s|\s\$.+\$\s|\\\[.+\\\]|\\\(.+\\\))|(^\$$[\S\s
 function transformMessage(message?: ConversationNodeMessage) {
     if (!message || !message.content) return null
 
-    // ChatGPT is talking to tool
     if (message.recipient !== 'all') return null
 
-    // Skip tool's intermediate message.
     if (message.author.role === 'tool') {
         if (
-            // HACK: we special case the content_type 'multimodal_text' here because it is used by
-            // the dalle tool to return the image result, and we do want to show that.
             message.content.content_type !== 'multimodal_text'
-            // Code execution result with image
             && !(
                 message.content.content_type === 'execution_output'
-                && message.metadata?.aggregate_result?.messages?.some(msg => msg.message_type === 'image')
+                && message.metadata?.aggregate_result?.messages?.some((msg: any) => msg.message_type === 'image')
             )
         ) {
             return null
@@ -60,7 +58,6 @@ function transformMessage(message?: ConversationNodeMessage) {
     if (matches) {
         let index = 0
         content = content.replace(LatexRegex, () => {
-            // Replace it with `╬${index}╬` to avoid markdown processor ruin the formula
             return `╬${index++}╬`
         })
     }
@@ -69,14 +66,12 @@ function transformMessage(message?: ConversationNodeMessage) {
         content = transformFootNotes(content, message.metadata)
     }
 
-    // Only message from assistant will be reformatted
     if (message.author.role === 'assistant' && content) {
         content = reformatContent(content)
     }
 
     if (matches) {
-        // Replace `╬${index}╬` back to the original latex
-        content = content.replace(/╬(\d+)╬/g, (_, index) => {
+        content = content.replace(/╬(\d+)╬/g, (_, index: string) => {
             return matches[+index]
         })
     }
@@ -84,9 +79,6 @@ function transformMessage(message?: ConversationNodeMessage) {
     return `${author}:\n${content}`
 }
 
-/**
- * Convert the content based on the type of message
- */
 function transformContent(
     content: ConversationNodeMessage['content'],
     metadata: ConversationNodeMessage['metadata'],
@@ -99,7 +91,7 @@ function transformContent(
         case 'execution_output':
             if (metadata?.aggregate_result?.messages) {
                 return metadata.aggregate_result.messages
-                    .filter(msg => msg.message_type === 'image')
+                    .filter((msg: any) => msg.message_type === 'image')
                     .map(() => '[image]')
                     .join('\n')
             }
@@ -107,7 +99,7 @@ function transformContent(
         case 'tether_quote':
             return `> ${content.title || content.text || ''}`
         case 'tether_browsing_code':
-            return '' // TODO: implement
+            return ''
         case 'tether_browsing_display': {
             const metadataList = metadata?._cite_metadata?.metadata_list
             if (Array.isArray(metadataList) && metadataList.length > 0) {
@@ -116,13 +108,10 @@ function transformContent(
             return ''
         }
         case 'multimodal_text': {
-            return content.parts?.map((part) => {
+            return content.parts?.map((part: any) => {
                 if (typeof part === 'string') return part
-                // We show `[image]` for multimodal as the base64 string is too long. This is bad for sharing pure text.
                 if (part.content_type === 'image_asset_pointer') return '[image]'
                 if (part.content_type === 'audio_transcription') return `[audio] ${part.text}`
-                if (part.content_type === 'audio_asset_pointer') return null
-                if (part.content_type === 'real_time_user_audio_video_asset_pointer') return null
                 return '[Unsupported multimodal content]'
             }).join('\n') || ''
         }
@@ -131,21 +120,14 @@ function transformContent(
     }
 }
 
-/**
- * Remove some markdown syntaxes from the content
- */
 function reformatContent(input: string) {
     const root = fromMarkdown(input)
-    flatMap(root, (item) => {
-        // Replace strong/bold with text
+    flatMap(root, (item: Node) => {
         if (item.type === 'strong') return (item as Strong).children
-        // Replace emphasis/italic with text
         if (item.type === 'emphasis') return (item as Emphasis).children
-
         return [item]
     })
     const result = toMarkdown(root)
-    // HACK: render to markdown will let [ be escaped, so we need to remove the first character
     if (result.startsWith('\\[') && input.startsWith('[')) {
         return result.slice(1)
     }
@@ -165,20 +147,14 @@ function transformAuthor(author: ConversationNodeMessage['author']): string {
     }
 }
 
-/**
- * Transform foot notes in assistant's message
- */
 function transformFootNotes(
     input: string,
     metadata: ConversationNodeMessage['metadata'],
 ) {
-    // 【11†(PrintWiki)】
     const footNoteMarkRegex = /【(\d+)†\((.+?)\)】/g
     return input.replace(footNoteMarkRegex, (match, citeIndex, _evidenceText) => {
-        const citation = metadata?.citations?.find(cite => cite.metadata?.extra?.cited_message_idx === +citeIndex)
-        // We simply remove the foot note mark in text output
+        const citation = metadata?.citations?.find((cite: Citation) => cite.metadata?.extra?.cited_message_idx === +citeIndex)
         if (citation) return ''
-
         return match
     })
 }

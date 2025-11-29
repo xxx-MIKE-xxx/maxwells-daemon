@@ -1,5 +1,5 @@
 import EventEmitter from 'mitt'
-import { sleep } from './utils'
+import { sleep } from './utils/misc' // Updated import path
 
 type RequestFn<T> = () => Promise<T>
 interface RequestObject<T> {
@@ -86,13 +86,13 @@ export class RequestQueue<T> {
             this.results.push(result)
             this.completed++
             this.progress(name, 'processing')
-            this.backoff = this.minBackoff // reset backoff on success
+            this.backoff = this.minBackoff 
         }
         catch (error) {
             console.error(`Request ${name} failed:`, error)
             this.progress(name, 'retrying')
             this.backoff = Math.min(this.backoff * this.backoffMultiplier, this.maxBackoff)
-            this.queue.unshift(requestObject) // add request back to the front of the queue
+            this.queue.unshift(requestObject) 
         }
 
         await sleep(this.backoff)

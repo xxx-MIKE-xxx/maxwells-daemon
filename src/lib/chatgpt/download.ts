@@ -1,5 +1,5 @@
 import sanitize from 'sanitize-filename'
-import { dateStr, timestamp, unixTimestampToISOString } from './utils'
+import { dateStr, timestamp, unixTimestampToISOString } from './utils/misc' // Updated import path
 
 export function downloadFile(filename: string, type: string, content: string | Blob) {
     const blob = content instanceof Blob ? content : new Blob([content], { type })
@@ -23,11 +23,7 @@ export function downloadUrl(filename: string, url: string) {
 
 export function getFileNameWithFormat(format: string, ext: string, {
     title = document.title,
-    // chatId will be empty when exporting all conversations
     chatId = '',
-    // convert to seconds for unixTimestampToISOString which expects a unix
-    // timestamp (in seconds). using Date.now() directly would pass
-    // milliseconds which results in an invalid far future date.
     createTime = Math.floor(Date.now() / 1000),
     updateTime = Math.floor(Date.now() / 1000),
 } = {}) {

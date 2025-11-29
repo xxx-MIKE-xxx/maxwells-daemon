@@ -11,14 +11,11 @@ interface ApiSession {
     user: {
         email: string
         groups: string[]
-        // token's issued_at timestamp
         iat: number
         id: string
-        // token's expiration timestamp
         idp: string
         image: string
         intercom_hash: string
-        // whether the user has multi-factor authentication enabled
         mfa: boolean
         name: string
         picture: string
@@ -82,7 +79,6 @@ interface MessageMeta {
     args?: unknown
     command?: 'click' | 'search' | 'quote' | 'quote_lines' | 'scroll' & (string & {})
     finish_details?: {
-        // stop: string
         stop_tokens?: number[]
         type: 'stop' | 'interrupted' & (string & {})
     }
@@ -97,10 +93,6 @@ interface MessageMeta {
 export type AuthorRole = 'system' | 'assistant' | 'user' | 'tool'
 
 interface MultiModalInputImage {
-    /**
-     * hack: this come from the api in the form of `file-service://file-base64`, but we replace it
-     * automatically in the api wrapper with a data uri
-     */
     asset_pointer: string
     content_type: 'image_asset_pointer' & (string & {})
     fovea: number
@@ -170,11 +162,9 @@ export interface ConversationNodeMessage {
         metadata: unknown
     }
     content: {
-        // chat response
         content_type: 'text'
         parts: string[]
     } | {
-        // plugin response
         content_type: 'code'
         language: 'unknown' & (string & {})
         text: string
@@ -193,13 +183,11 @@ export interface ConversationNodeMessage {
         url?: string
     } | {
         content_type: 'tether_browsing_code'
-        // unknown
     } | {
         content_type: 'tether_browsing_display'
         result: string
         summary?: string
     } | {
-        // multi-modal input
         content_type: 'multimodal_text'
         parts: Array<MultiModalAudioVideoAssetPointer | MultiModalAudioTranscription | MultiModalInputImage | MultiModalInputAudio | string>
     } | {
@@ -208,7 +196,6 @@ export interface ConversationNodeMessage {
     }
     create_time?: number
     update_time?: number
-    // end_turn: boolean
     id: string
     metadata?: MessageMeta
     recipient: 'all' | 'browser' | 'python' | 'dalle.text2im' & (string & {})
@@ -249,7 +236,6 @@ export interface ApiConversationItem {
 }
 
 export interface ApiConversations {
-    // what is this for?
     has_missing_conversations: boolean
     items: ApiConversationItem[]
     limit: number
@@ -257,9 +243,7 @@ export interface ApiConversations {
     total: number | null
 }
 
-/// "Gizmos" are what OpenAI calls "projects" or other GPTs in the UI
 export interface ApiGizmo {
-    // weird nesting but ok
     gizmo: { gizmo: ApiProjectInfo }
     conversations: { itmes: ApiConversationItem[] }
 }
@@ -268,7 +252,6 @@ export interface ApiProjectInfo {
     id: string
     organization_id: string
     display: { name: string; description: string }
-    // todo: support exporting project context
 }
 
 interface ApiAccountsCheckAccountDetail {
@@ -313,11 +296,9 @@ interface ApiAccountsCheck {
 
 type ApiFileDownload = {
     status: 'success'
-    /** signed download url */
     download_url: string
     metadata: {}
     file_name: string
-    /** iso8601 datetime string */
     creation_time: string
 } | {
     status: 'error'
@@ -325,7 +306,6 @@ type ApiFileDownload = {
     error_message: string | null
 }
 
-// eslint-disable-next-line no-restricted-syntax
 const enum ChatGPTCookie {
     AgeVerification = 'oai-av-seen',
     AllowNonessential = 'oai-allow-ne',
@@ -386,8 +366,6 @@ async function fetchImageFromPointer(uri: string) {
     return base64.replace(/^data:.*?;/, `data:${image.headers.get('content-type')};`)
 }
 
-/** replaces `file-service://` pointers with data uris containing the image */
-/** avoid errors in parsing multimodal parts we don't understand */
 async function replaceImageAssets(conversation: ApiConversation): Promise<void> {
     const isMultiModalInputImage = (part: any): part is MultiModalInputImage => {
         return typeof part === 'object'
@@ -441,7 +419,7 @@ async function replaceImageAssets(conversation: ApiConversation): Promise<void> 
 export async function fetchConversation(chatId: string, shouldReplaceAssets: boolean): Promise<ApiConversationWithId> {
     if (chatId.startsWith('__share__')) {
         const id = chatId.replace('__share__', '')
-        const shareConversation = getConversationFromSharePage() as ApiConversation
+        const shareConversation = await getConversationFromSharePage() as ApiConversation // CHANGED: Await
         await replaceImageAssets(shareConversation)
 
         return {
@@ -491,7 +469,7 @@ async function fetchProjectConversations(project: string, offset = 0, limit = 20
 
 export async function fetchAllConversations(project: string | null = null, maxConversations = 1000): Promise<ApiConversationItem[]> {
     const conversations: ApiConversationItem[] = []
-    const limit = project === null ? 100 : 50 // gizmos api uses a smaller limit
+    const limit = project === null ? 100 : 50 
     let offset = 0
     while (true) {
         try {
@@ -499,13 +477,11 @@ export async function fetchAllConversations(project: string | null = null, maxCo
                 ? await fetchConversations(offset, limit)
                 : await fetchProjectConversations(project, offset, limit)
             if (!result.items) {
-                // Handle potential API errors or empty responses
                 console.warn('fetchAllConversations received no items at offset:', offset)
                 break
             }
             conversations.push(...result.items)
             if (result.items.length === 0) break
-            // Stop if we've reached the total reported by the API OR the user-defined limit
             if (result.total !== null && offset + limit >= result.total) break
             if (conversations.length >= maxConversations) break
             offset += limit
@@ -515,7 +491,6 @@ export async function fetchAllConversations(project: string | null = null, maxCo
             break
         }
     }
-    // Ensure we don't return more than the requested limit if the last batch pushed us over
     return conversations.slice(0, maxConversations)
 }
 
@@ -539,9 +514,10 @@ export async function deleteConversation(chatId: string): Promise<boolean> {
     return success
 }
 
+// CHANGED: Async + Await getAccessToken
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
-    const accessToken = await getAccessToken() // This MUST be awaited
-    const accountId = await getTeamAccountId()
+    const accessToken = await getAccessToken() // CHANGED: Await
+    const accountId = await getTeamAccountId() // CHANGED: Await
 
     const response = await fetch(url, {
         ...options,
@@ -568,8 +544,9 @@ async function _fetchSession(): Promise<ApiSession> {
 
 const fetchSession = memorize(_fetchSession)
 
+// CHANGED: Async + Await getPageAccessToken
 async function getAccessToken(): Promise<string> {
-    const pageAccessToken = await getPageAccessToken() // Await this!
+    const pageAccessToken = await getPageAccessToken() // CHANGED: Await
     if (pageAccessToken) return pageAccessToken
 
     const session = await fetchSession()
@@ -627,8 +604,6 @@ const ModelMapping: { [key in ModelSlug]: string } & { [key: string]: string } =
     'gpt-4': 'GPT-4',
     'gpt-4-browsing': 'GPT-4 (Browser)',
     'gpt-4o': 'GPT-4o',
-
-    // fuzzy matching
     'text-davinci-002': 'GPT-3.5',
 }
 
@@ -685,19 +660,16 @@ function extractConversationResult(conversationMapping: Record<string, Conversat
     while (currentNodeId) {
         const node: ConversationNode = conversationMapping[currentNodeId]
         if (!node) {
-            break // Node not found
+            break
         }
 
         if (node.parent === undefined) {
-            break // Stop at root message.
+            break
         }
 
         if (
-            // Skip system messages
             node.message?.author.role !== 'system'
-            // Skip model memory context
             && node.message?.content.content_type !== 'model_editable_context'
-            // Skip user custom instructions
             && node.message?.content.content_type !== 'user_editable_context'
         ) {
             result.unshift(node)
@@ -709,10 +681,6 @@ function extractConversationResult(conversationMapping: Record<string, Conversat
     return result
 }
 
-/**
- * Merge continuation nodes generated by official continuation
- * to improve the readability of the conversation. (#146)
- */
 function mergeContinuationNodes(nodes: ConversationNode[]): ConversationNode[] {
     const result: ConversationNode[] = []
     for (const node of nodes) {
@@ -722,7 +690,6 @@ function mergeContinuationNodes(nodes: ConversationNode[]): ConversationNode[] {
          && prevNode.message.recipient === 'all' && node.message.recipient === 'all'
          && prevNode.message.content.content_type === 'text' && node.message.content.content_type === 'text'
         ) {
-            // the last part of the previous node should directly concat to the first part of the current node
             prevNode.message.content.parts[prevNode.message.content.parts.length - 1] += node.message.content.parts[0]
             prevNode.message.content.parts.push(...node.message.content.parts.slice(1))
         }
